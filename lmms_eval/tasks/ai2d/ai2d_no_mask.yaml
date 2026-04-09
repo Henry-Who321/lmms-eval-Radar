@@ -12,11 +12,13 @@ lmms_eval_specific_kwargs:
   default:
     prompt_format: mcq
     pre_prompt: ""
-    post_prompt: "\nAnswer with the option's letter from the given choices directly."
+    # post_prompt: "\nAnswer with the option's letter from the given choices directly."
+    post_prompt: "\nAnswer with the option's letter from the given choices."
   gpt4v: 
     prompt_format: mcq
     pre_prompt: ""
-    post_prompt: "\nAbove choices are given in {option}. {content} format.\nPlease answer with the option letter from the given choices directly."
+    # post_prompt: "\nAbove choices are given in {option}. {content} format.\nPlease answer with the option letter from the given choices directly."
+    post_prompt: "\nAbove choices are given in {option}. {content} format.\nPlease answer with the option letter from the given choices."
   qwen_vl:
     prompt_format: qa
     pre_prompt: ""

@@ -6,22 +6,28 @@ test_split: test
 output_type: generate_until
 doc_to_visual: !function utils.ai2d_doc_to_visual
 doc_to_text: !function utils.ai2d_doc_to_text
-doc_to_target: !function utils.ai2d_doc_to_target
-  
+doc_to_target: "answer"
+process_results: !function utils.ai2d_process_results
+
 lmms_eval_specific_kwargs:
   default:
+    profile: default
     prompt_format: mcq
     pre_prompt: ""
-    post_prompt: "\nAnswer with the option's letter from the given choices directly."
+    post_prompt: "\nAnswer with ONLY the option's letter from the given choices (A, B, C, or D)."
+
   gpt4v: 
+    profile: gpt4v
     prompt_format: mcq
     pre_prompt: ""
-    post_prompt: "\nAbove choices are given in {option}. {content} format.\nPlease answer with the option letter from the given choices directly."
+    post_prompt: "\nAbove choices are given in {option}. {content} format.\nPlease answer with ONLY the option's letter from the given choices (A, B, C, or D)."
   qwen_vl:
+    profile: qwen_vl
     prompt_format: qa
     pre_prompt: ""
-    post_prompt: " Answer:"
+    post_prompt: "\nAnswer with ONLY the option's letter from the given choices (A, B, C, or D). Do not output anything else. "
   xcomposer2_4khd:
+    profile: xcomposer2_4khd
     prompt_format: mcq_xcomposer
     pre_prompt: "[UNUSED_TOKEN_146]user\nQuestion: "
     post_prompt: "[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\nThe answer is"
@@ -46,10 +52,8 @@ filter_list:
 
 metric_list:
   - metric: exact_match
-    aggregation: mean
+    aggregation: !function utils.ai2d_aggregate_accuracy
     higher_is_better: true
-    ignore_case: true
-    ignore_punctuation: true
 
 metadata:
   - version: 0.0

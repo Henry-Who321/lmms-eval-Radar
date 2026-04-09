@@ -1,22 +1,19 @@
 #!/bin/bash
 set -uo pipefail
 
-# Qwen3-VL Stage2 (Fine-tuned) Evaluation Script with SGLang Backend
+# Qwen3-VL Baseline Evaluation Script with SGLang Backend
 #
 # Requirements:
 # - sglang>=0.4.6
 # - qwen-vl-utils
 # - CUDA-enabled GPU(s)
-#
-# Stage2 mode: expects model to output answers wrapped in <answer>...</answer> tags.
-# Set LMMS_EXTRACT_ANSWER_FROM_TAGS=true to enable tag-based answer extraction.
 
 # ============================================================================
 # Configuration
 # ============================================================================
 
-# Model to evaluate (local path to fine-tuned checkpoint)
-MODEL="/path/to/your/finetuned/model"
+# Model to evaluate (HuggingFace model ID or local path)
+MODEL="Qwen/Qwen3-VL-8B-Instruct"
 
 # Tasks to evaluate
 TASKS="mme,mmstar,chartqa,realworldqa,mathvista_testmini_solution,mathverse_testmini,ai2d"
@@ -41,10 +38,6 @@ THREADS=16
 # Generation Configuration
 GEN_KWARGS="max_new_tokens=4096,until="
 
-# Stage2 Environment Variables
-export LMMS_EXTRACT_ANSWER_FROM_TAGS=true
-export LMMS_TEST_MODE=stage2
-
 # Reduce the chance of one TP worker crashing and taking down the whole scheduler.
 export TOKENIZERS_PARALLELISM=false
 
@@ -66,5 +59,5 @@ python -m lmms_eval \
     --batch_size ${BATCH_SIZE} \
     --gen_kwargs ${GEN_KWARGS} \
     --log_samples \
-    --log_samples_suffix stage2 \
+    --log_samples_suffix baseline \
     --output_path ${OUTPUT_PATH}
