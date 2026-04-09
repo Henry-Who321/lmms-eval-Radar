@@ -1,11 +1,8 @@
-import datetime
-import json
 import os
 from collections import defaultdict
 
 from loguru import logger as eval_logger
 
-from lmms_eval.tasks._task_utils.file_utils import generate_submission_file
 
 dir_name = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,18 +37,40 @@ def mme_doc_to_visual(doc):
 
 def mme_doc_to_text(doc, lmms_eval_specific_kwargs=None):
     question = doc["question"].strip()
-    if "pre_prompt" in lmms_eval_specific_kwargs and lmms_eval_specific_kwargs["pre_prompt"] != "":
+    if (
+        "pre_prompt" in lmms_eval_specific_kwargs
+        and lmms_eval_specific_kwargs["pre_prompt"] != ""
+    ):
         question = question.replace(replace_prompt, "")
         question = f"{lmms_eval_specific_kwargs['pre_prompt']}{question}"
-    if "post_prompt" in lmms_eval_specific_kwargs and lmms_eval_specific_kwargs["post_prompt"] != "":
+    if (
+        "post_prompt" in lmms_eval_specific_kwargs
+        and lmms_eval_specific_kwargs["post_prompt"] != ""
+    ):
         question = question.replace(replace_prompt, "")
         question = f"{question}{lmms_eval_specific_kwargs['post_prompt']}"
     return question
 
 
 def parse_pred_ans(pred_ans):
-    """Brought from Otter Eval"""
+    """Parse prediction answer, supporting both plain text and <answer> tag formats.
+
+    Brought from Otter Eval, extended to support <answer> tags for thinking models.
+    Behavior controlled by LMMS_EXTRACT_ANSWER_FROM_TAGS environment variable.
+    """
+    import os
+    import re
+
     pred_ans = pred_ans.lower().strip().replace(".", "")
+
+    # Only extract <answer> tags if enabled by environment variable
+    extract_from_tags = os.environ.get("LMMS_EXTRACT_ANSWER_FROM_TAGS", "auto").lower()
+    if extract_from_tags in ("auto", "true", "1", "yes"):
+        # Try to extract content from <answer> tags
+        answer_match = re.search(r"<answer>\s*(.*?)\s*</answer>", pred_ans, re.DOTALL)
+        if answer_match:
+            pred_ans = answer_match.group(1).strip()
+
     pred_label = None
     if pred_ans in ["yes", "no"]:
         pred_label = pred_ans
@@ -88,10 +107,20 @@ def mme_process_results(doc, results):
     assert pred_ans in ["yes", "no", "other"]
     score = 1.0 if pred_ans == gt_ans else 0.0
     category = doc["category"]
-    key_name = "mme_perception_score" if category in eval_type_dict["Perception"] else "mme_cognition_score"
+    key_name = (
+        "mme_perception_score"
+        if category in eval_type_dict["Perception"]
+        else "mme_cognition_score"
+    )
     # Note: the key name here is very important. It decides which aggregation function will receive the results
     # We note down the question id/category to help us aggregate the results later
-    return {key_name: {"question_id": doc["question_id"], "category": category, "score": score}}
+    return {
+        key_name: {
+            "question_id": doc["question_id"],
+            "category": category,
+            "score": score,
+        }
+    }
 
 
 def mme_aggregate_results(results):

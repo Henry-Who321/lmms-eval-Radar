@@ -1,12 +1,9 @@
-import json
-import os
 from pathlib import Path
 
 import pandas as pd
 import yaml
-from loguru import logger as eval_logger
 
-from lmms_eval.tasks._task_utils.file_utils import generate_submission_file
+from lmms_eval.tasks._task_utils.answer_extraction import extract_answer_lowercase
 from lmms_eval.tasks.mathvista.mathvista_evals import MathVistaEvaluator
 
 with open(Path(__file__).parent / "mathvista.yaml", "r") as f:
@@ -50,7 +47,8 @@ def mathvista_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 
 
 def mathvista_process_results(doc, results):
-    prediction = results[0].strip()
+    # Extract from <answer> tags if present
+    prediction = extract_answer_lowercase(results[0])
     problem = {
         "question_type": doc["question_type"],
         "answer_type": doc["answer_type"],
@@ -59,11 +57,23 @@ def mathvista_process_results(doc, results):
         "answer": doc["answer"] if "answer" in doc else None,
         "precision": doc["precision"] if "precision" in doc else 0,
     }
-    extraction = mathvista_evaluator.extract_answer(prediction, problem, config["metadata"]["quick_extract"])
+    extraction = mathvista_evaluator.extract_answer(
+        prediction, problem, config["metadata"]["quick_extract"]
+    )
 
-    prediction = mathvista_evaluator.normalize_extracted_answer(extraction, problem["choices"], problem["question_type"], problem["answer_type"], problem["precision"])
+    prediction = mathvista_evaluator.normalize_extracted_answer(
+        extraction,
+        problem["choices"],
+        problem["question_type"],
+        problem["answer_type"],
+        problem["precision"],
+    )
     # set test set answer to None
-    true_false = mathvista_evaluator.safe_equal(prediction, problem["answer"]) if problem["answer"] is not None else False
+    true_false = (
+        mathvista_evaluator.safe_equal(prediction, problem["answer"])
+        if problem["answer"] is not None
+        else False
+    )
 
     result = {
         "question_id": doc["pid"],
@@ -85,7 +95,9 @@ def mathvista_process_results(doc, results):
     }
 
 
-def mathvista_aggregate_results(results, args, *, calculate_gain=False, random_scores=None):
+def mathvista_aggregate_results(
+    results, args, *, calculate_gain=False, random_scores=None
+):
     split_flag = results[0]["metadata"]["split"]
     full_pids = [result["question_id"] for result in results]
     total = len(results)
@@ -98,25 +110,55 @@ def mathvista_aggregate_results(results, args, *, calculate_gain=False, random_s
 
     results_dict = {result["question_id"]: result for result in results}
     df = pd.DataFrame(results_dict).T
-    target_keys = ["question_type", "answer_type", "language", "source", "category", "task", "context", "grade", "skills"]
+    target_keys = [
+        "question_type",
+        "answer_type",
+        "language",
+        "source",
+        "category",
+        "task",
+        "context",
+        "grade",
+        "skills",
+    ]
 
     for key in target_keys:
         values = df[key].explode().unique() if key == "skills" else df[key].unique()
         scores[key] = {}
         for value in values:
-            correct, total, acc = mathvista_evaluator.get_acc_with_contion(df, key, value)
+            correct, total, acc = mathvista_evaluator.get_acc_with_contion(
+                df, key, value
+            )
             if total > 0:
-                scores[key][value] = {"accuracy": acc, "correct": correct, "total": total}
-        scores[key] = dict(sorted(scores[key].items(), key=lambda item: float(item[1]["accuracy"]), reverse=True))
+                scores[key][value] = {
+                    "accuracy": acc,
+                    "correct": correct,
+                    "total": total,
+                }
+        scores[key] = dict(
+            sorted(
+                scores[key].items(),
+                key=lambda item: float(item[1]["accuracy"]),
+                reverse=True,
+            )
+        )
 
     if calculate_gain:
         for key in scores:
             if key == "average":
-                gain = round(float(scores[key]["accuracy"]) - float(random_scores[key]["accuracy"]), 2)
+                gain = round(
+                    float(scores[key]["accuracy"])
+                    - float(random_scores[key]["accuracy"]),
+                    2,
+                )
                 scores[key]["acc_gain"] = gain
             else:
                 for sub_key in scores[key]:
-                    gain = round(float(scores[key][sub_key]["accuracy"]) - float(random_scores[key][sub_key]["accuracy"]), 2)
+                    gain = round(
+                        float(scores[key][sub_key]["accuracy"])
+                        - float(random_scores[key][sub_key]["accuracy"]),
+                        2,
+                    )
                     scores[key][sub_key]["acc_gain"] = gain
 
     if scores["average"]["accuracy"] == 0:

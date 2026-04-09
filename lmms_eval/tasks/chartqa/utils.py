@@ -1,3 +1,6 @@
+from lmms_eval.tasks._task_utils.answer_extraction import extract_answer_lowercase
+
+
 def chartqa_doc_to_visual(doc):
     return [doc["image"].convert("RGB")]
 
@@ -8,10 +11,23 @@ def chartqa_doc_to_text(doc, lmms_eval_specific_kwargs):
     post_prompt = lmms_eval_specific_kwargs["post_prompt"]
     return f"{pre_prompt}{question}{post_prompt}"
 
+import re
 
 def chartqa_process_results(doc, results):
-    pred = results[0]
+    # 自己添加的
+    answer_match = re.search(r"<answer>\s*(.*?)\s*</answer>", results[0], re.DOTALL)
     type = doc["type"]
+
+    if answer_match:
+        pred = answer_match.group(1).strip()
+    else:
+        target = doc["answer"]
+        last_idx = results[0].rfind(target)
+        if last_idx != -1:
+            pred = results[0][last_idx:last_idx + len(target)]
+        else:
+            pred = results[0]
+
     score = relaxed_correctness(pred, doc["answer"])
     score = 1.0 if score else 0.0
     return_dict = {"relaxed_overall": score}

@@ -7,13 +7,18 @@ output_type: generate_until
 doc_to_visual: !function utils.realworldqa_doc_to_visual
 doc_to_text: !function utils.realworldqa_doc_to_text
 doc_to_target: "answer"
+process_results: !function utils.realworldqa_process_results
 
 generation_kwargs:
-  max_new_tokens: 16
+  max_new_tokens: 16384
   temperature: 0
   top_p: 1.0
   num_beams: 1
   do_sample: false
+  stop:
+    # - "</answer>"
+    # - "<|end|>"
+    # - "<|im_end|>"
 
 filter_list:
   - name: "flexible-extract"

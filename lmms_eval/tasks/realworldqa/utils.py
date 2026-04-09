@@ -2,6 +2,7 @@ import re
 
 from lmms_eval.filters.extraction import ExtendedRegexFilter
 from lmms_eval.filters.transformation import MapFilter
+from lmms_eval.tasks._task_utils.answer_extraction import extract_answer_lowercase
 
 REPLACE_PROMPT = "Please answer directly with only the letter of the correct option and nothing else."
 
@@ -18,7 +19,10 @@ def realworldqa_doc_to_text(doc, lmms_eval_specific_kwargs=None):
     question = doc["question"].strip()
     if "pre_prompt" in lmms_eval_specific_kwargs:
         pre_prompt = lmms_eval_specific_kwargs["pre_prompt"]
-    if "post_prompt" in lmms_eval_specific_kwargs and lmms_eval_specific_kwargs["post_prompt"]:
+    if (
+        "post_prompt" in lmms_eval_specific_kwargs
+        and lmms_eval_specific_kwargs["post_prompt"]
+    ):
         question = question.replace(REPLACE_PROMPT, "")
         post_prompt = lmms_eval_specific_kwargs["post_prompt"]
     return f"{pre_prompt}{question}{post_prompt}"
@@ -32,11 +36,13 @@ def realworldqa_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 
 
 def realworldqa_process_results(doc, results):
-    pred = results[0].lower().strip().rstrip(".")
+    pred = extract_answer_lowercase(results[0])
+    pred = pred.strip()
+
     gt_ans = doc["answer"].lower().strip()
 
     print(f"Prediction: {pred}, Ground Truth: {gt_ans}")
-    # assert gt_ans in ["a", "b", "c", "d"]
+
     score = 1.0 if pred == gt_ans else 0.0
     return {
         "exact_match": score,
@@ -45,7 +51,19 @@ def realworldqa_process_results(doc, results):
 
 class NumberWordsToDigitsFilter(MapFilter):
     def __init__(self) -> None:
-        mapping_dict = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+        mapping_dict = {
+            "zero": "0",
+            "one": "1",
+            "two": "2",
+            "three": "3",
+            "four": "4",
+            "five": "5",
+            "six": "6",
+            "seven": "7",
+            "eight": "8",
+            "nine": "9",
+            "ten": "10",
+        }
         super().__init__(mapping_dict, default_value=None)
 
     def apply(self, resps, docs):
@@ -87,6 +105,13 @@ class MultiChoiceRegexFilter(ExtendedRegexFilter):
             # Regex to extract multiple choice options from the question
             multiple_choices_regex = re.compile(r"\b([A-Z])\.\s+([^\n]*)")
             matches = multiple_choices_regex.findall(doc["question"])
+
+            # RealWorldQA is mostly open-ended. If the question is not a
+            # multiple-choice prompt, keep raw responses unchanged so
+            # downstream <answer> tag extraction still works.
+            if not matches:
+                filtered_resps.append(r[0])
+                continue
 
             # Build regex patterns and mappings for each choice
             for m in matches:

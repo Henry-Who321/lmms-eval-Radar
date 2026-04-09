@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from accelerate import Accelerator, DistributedType
-from mcp.types import AudioContent, ImageContent, TextContent
+from mcp.types import ImageContent, TextContent
 from PIL import Image
 from sglang import Engine
 from tqdm import tqdm
@@ -120,6 +120,7 @@ class Sglang(lmms):
         self.fps = fps
         self.max_pixels = max_pixels
         self.min_pixels = min_pixels
+        self.lmms_test_mode = os.getenv("LMMS_TEST_MODE", "").strip().lower()
 
     @property
     def config(self):
@@ -239,6 +240,48 @@ class Sglang(lmms):
             "top_p": gen_kwargs["top_p"],
         }
 
+    def _append_suffix_to_input_ids(self, input_ids: List[List[int]], suffix: str) -> List[List[int]]:
+        suffix_ids = self.processor.tokenizer.encode(suffix, add_special_tokens=False)
+        return [ids + suffix_ids for ids in input_ids]
+
+    # def _normalize_step2_choice(self, text: str) -> str:
+    #     normalized = text.strip().lower()
+    #     if normalized == "on>":
+    #         return "on>"
+    #     if normalized == "off>":
+    #         return "off>"
+    #     eval_logger.warning(f"Unexpected step2 selection '{text}', fallback to 'off>'.")
+    #     return "off>"
+
+    def _select_step2_suffix_tokens(self, input_ids, image_inputs, batched_messages, sampling_params):
+        step2_sampling_params = dict(sampling_params)
+        # Force stage2 chooser output to exactly "on>" or "off>" with no trailing text.
+        step2_sampling_params["max_new_tokens"] = 5
+        step2_sampling_params["regex"] = r"^(on|off)>$"
+        step2_sampling_params["temperature"] = 0
+        step2_sampling_params["top_p"] = 1
+
+        if self.mcp_client is None:
+            step2_outputs = self.batch_level_generate(
+                input_ids=input_ids,
+                sampling_params=step2_sampling_params,
+                image_data=image_inputs,
+            )
+        else:
+            step2_outputs = self.req_level_generate(
+                input_ids=input_ids,
+                image_data=image_inputs,
+                sampling_params=step2_sampling_params,
+                batched_messages=batched_messages,
+            )
+
+        step2_choices = [output["text"] for output in step2_outputs]
+
+        return [
+            ids + self.processor.tokenizer.encode(choice, add_special_tokens=False)
+            for ids, choice in zip(input_ids, step2_choices)
+        ]
+
     @property
     def image_token_id(self):
         image_token_id = getattr(self.processor, "image_token_id", None)
@@ -306,6 +349,19 @@ class Sglang(lmms):
                     image_inputs.append(images)
             else:
                 input_ids = inputs.pop("input_ids").tolist()
+
+            if self.lmms_test_mode == "stage1off":
+                input_ids = self._append_suffix_to_input_ids(input_ids, "<think_off>")
+            elif self.lmms_test_mode == "stage1on":
+                input_ids = self._append_suffix_to_input_ids(input_ids, "<think_on>")
+            elif self.lmms_test_mode == "stage2":
+                step2_input_ids = self._append_suffix_to_input_ids(input_ids, "<think_")
+                input_ids = self._select_step2_suffix_tokens(
+                    input_ids=step2_input_ids,
+                    image_inputs=image_inputs,
+                    batched_messages=batched_messages,
+                    sampling_params=params,
+                )
 
             start_time = time.time()
             if self.mcp_client is None:

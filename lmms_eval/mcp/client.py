@@ -1,12 +1,17 @@
 import asyncio
 import json
 from datetime import timedelta
-from typing import List, Union
+from typing import Any, List, Union
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.types import AudioContent, ImageContent, TextContent
+from mcp.types import ImageContent, TextContent
 from openai import OpenAI
+
+try:
+    from mcp.types import AudioContent
+except ImportError:
+    AudioContent = None
 
 
 class MCPClient:
@@ -48,7 +53,7 @@ class MCPClient:
                 result = await session.call_tool(tool_name, tool_args)
                 return result
 
-    def convert_result_to_openai_format(self, result: Union[ImageContent, TextContent, AudioContent, List[Union[ImageContent, TextContent, AudioContent]]]) -> dict:
+    def convert_result_to_openai_format(self, result: Union[Any, List[Any]]) -> dict:
         """
         Convert the result from the MCP tool to OpenAI compatible format.
         :param result: Result from the MCP tool.
@@ -63,7 +68,7 @@ class MCPClient:
             return [{"type": "image_url", "image_url": {"url": f"data:image/png;base64,{result.data}"}}]
         elif isinstance(result, TextContent):
             return [{"type": "text", "text": result.text}]
-        elif isinstance(result, AudioContent):
+        elif AudioContent is not None and isinstance(result, AudioContent):
             return [{"type": "audio_url", "audio_url": {"url": f"data:audio/wav;base64,{result.data}"}}]
         else:
             raise ValueError(f"Unsupported result type : {type(result)}")

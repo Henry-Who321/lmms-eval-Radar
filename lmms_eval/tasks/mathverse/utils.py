@@ -8,6 +8,7 @@ from loguru import logger as eval_logger
 
 from lmms_eval.tasks._task_utils.file_utils import generate_submission_file
 from lmms_eval.tasks.mathverse.mathverse_evals import MathVerseEvaluator
+from lmms_eval.tasks._task_utils.answer_extraction import extract_answer_lowercase
 
 with open(Path(__file__).parent / "mathverse.yaml", "r") as f:
     raw_data = f.readlines()
@@ -44,7 +45,8 @@ def mathverse_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 
 
 def mathverse_process_results(doc, results):
-    prediction = results[0].strip()
+    # Use shared extractor which respects LMMS_EXTRACT_ANSWER_FROM_TAGS env var
+    prediction = extract_answer_lowercase(results[0]).strip()
     question = doc["question_for_eval"]
     answer = doc["answer"] if "answer" in doc else None
 
