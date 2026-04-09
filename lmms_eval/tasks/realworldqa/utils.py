@@ -1,5 +1,6 @@
 import re
 
+from lmms_eval.api.filter import Filter
 from lmms_eval.filters.extraction import ExtendedRegexFilter
 from lmms_eval.filters.transformation import MapFilter
 from lmms_eval.tasks._task_utils.answer_extraction import extract_answer_lowercase
@@ -35,13 +36,31 @@ def realworldqa_doc_to_text(doc, lmms_eval_specific_kwargs=None):
 # }
 
 
+class AnswerTagExtractionFilter(Filter):
+    """Extract content from <answer>...</answer> tags before punctuation stripping.
+
+    Must run first in the filter chain to prevent downstream filters from
+    corrupting angle brackets (e.g. '<answer>C</answer>' -> 'answerCanswer').
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    def apply(self, resps, docs):
+        _tag_re = re.compile(r"<answer>\s*(.*?)\s*</answer>", re.DOTALL)
+
+        def _extract(resp: str) -> str:
+            m = _tag_re.search(resp)
+            return m.group(1).strip() if m else resp
+
+        return [[_extract(resp) for resp in resp_list] for resp_list in resps]
+
+
 def realworldqa_process_results(doc, results):
-    pred = extract_answer_lowercase(results[0])
-    pred = pred.strip()
-
+    # results[0] has already been processed by the filter chain
+    # (AnswerTagExtractionFilter -> NumberWordsToDigitsFilter -> MultiChoiceRegexFilter)
+    pred = results[0].strip().lower()
     gt_ans = doc["answer"].lower().strip()
-
-    print(f"Prediction: {pred}, Ground Truth: {gt_ans}")
 
     score = 1.0 if pred == gt_ans else 0.0
     return {
@@ -105,13 +124,6 @@ class MultiChoiceRegexFilter(ExtendedRegexFilter):
             # Regex to extract multiple choice options from the question
             multiple_choices_regex = re.compile(r"\b([A-Z])\.\s+([^\n]*)")
             matches = multiple_choices_regex.findall(doc["question"])
-
-            # RealWorldQA is mostly open-ended. If the question is not a
-            # multiple-choice prompt, keep raw responses unchanged so
-            # downstream <answer> tag extraction still works.
-            if not matches:
-                filtered_resps.append(r[0])
-                continue
 
             # Build regex patterns and mappings for each choice
             for m in matches:
